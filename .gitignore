@@ -1,0 +1,44 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.Python
+build/
+dist/
+
+# --- Variaveis de ambiente e segredos ---
+.env
+.env.*
+*.pem
+*.key
+
+# --- Banco de dados local (SQLite) ---
+*.db
+*.sqlite3
+
+# --- Arquivos gerados pelo app mobile em tempo de execucao ---
+comparador_nomes_fotos/
+comparador_nomes_cache.db
+
+# --- PDFs enviados/armazenados pelo backend ---
+backend/services/pdf_service/pdfs_armazenados/
+
+# --- Buildozer / empacotamento Android ---
+mobile_app/.buildozer/
+mobile_app/bin/
+*.apk
+*.aab
+
+# --- Docker ---
+*.log
+
+# --- Editor / sistema operacional ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

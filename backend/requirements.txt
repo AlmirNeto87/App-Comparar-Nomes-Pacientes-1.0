@@ -1,0 +1,22 @@
+# Framework das APIs
+fastapi==0.115.0
+uvicorn==0.30.6
+
+# Comunicacao entre o gateway e os microservicos
+httpx==0.27.2
+
+# Extracao de texto de PDF
+# (sem versao fixa: em Python mais novo, uma versao fixa antiga pode
+# nao ter "wheel" pronto e o pip tenta compilar do zero, o que falha
+# com "metadata-generation-failed" - deixamos o pip escolher a mais
+# recente compativel com o seu Python)
+pymupdf
+
+# Extracao de tabelas/colunas especificas de PDF
+pdfplumber==0.11.4
+
+# Comparacao aproximada de nomes (fuzzy matching)
+rapidfuzz==3.9.6
+
+# Upload de arquivos (multipart/form-data)
+python-multipart==0.0.9

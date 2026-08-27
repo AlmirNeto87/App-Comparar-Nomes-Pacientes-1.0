@@ -1,0 +1,13 @@
+# Framework do app mobile
+kivy==2.3.0
+plyer==2.1.0
+
+# OCR local (extrair texto de fotos)
+pytesseract==0.3.10
+pillow==10.4.0
+
+# Comparacao aproximada de nomes (fuzzy matching)
+rapidfuzz==3.9.6
+
+# Comunicacao com o backend
+requests==2.32.3

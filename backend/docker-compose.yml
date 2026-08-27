@@ -1,0 +1,36 @@
+# Sobe os tres microservicos do backend de uma vez, cada um em seu
+# proprio container. Rodar com: docker compose up --build
+
+services:
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - pdf_service
+      - matching_service
+
+  pdf_service:
+    build:
+      context: .
+      dockerfile: services/pdf_service/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      # guarda os PDFs enviados fora do container, para nao perde-los
+      # quando o container for recriado
+      - ./services/pdf_service/pdfs_armazenados:/app/pdfs_armazenados
+
+  matching_service:
+    build:
+      context: .
+      dockerfile: services/matching_service/Dockerfile
+    ports:
+      - "8002:8002"
+
+# Para escalar um servico especifico, por exemplo o de matching:
+#   docker compose up --build --scale matching_service=3
+# (nesse caso, colocar um load balancer na frente, como o Nginx ou Traefik)
