@@ -42,3 +42,8 @@ mobile_app/bin/
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- Arquivos de Imagem Teste ---
+.jpeg
+.png
+.jpg
