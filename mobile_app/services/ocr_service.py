@@ -10,10 +10,30 @@ instalado no dispositivo (no Android, geralmente incluido via recipe
 do Buildozer; no desktop, precisa instalar o Tesseract separadamente).
 """
 
+import os
+import platform
 import re
 from PIL import Image
 import pytesseract
 from pytesseract import Output
+
+
+# --- Localizacao automatica do Tesseract no Windows ---
+#
+# O pytesseract so encontra o programa Tesseract se ele estiver no
+# PATH do Windows. Como o instalador nem sempre marca essa opcao,
+# aqui a gente confere se o Tesseract esta no local padrao de
+# instalacao e, se estiver, aponta direto pra ele - assim funciona
+# mesmo sem mexer nas variaveis de ambiente do sistema.
+if platform.system() == "Windows":
+    CAMINHOS_PADRAO_WINDOWS = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]
+    for caminho_candidato in CAMINHOS_PADRAO_WINDOWS:
+        if os.path.exists(caminho_candidato):
+            pytesseract.pytesseract.tesseract_cmd = caminho_candidato
+            break
 
 
 def extrair_texto_da_imagem(caminho_imagem, idioma="por"):
@@ -22,9 +42,20 @@ def extrair_texto_da_imagem(caminho_imagem, idioma="por"):
 
     caminho_imagem: caminho do arquivo de foto tirada pelo usuario.
     idioma: idioma esperado no texto (padrao: portugues).
+
+    Usa o modo '--psm 6' do Tesseract (assume que a imagem inteira e
+    UM UNICO bloco de texto). Sem isso, o modo automatico padrao do
+    Tesseract tenta adivinhar onde ficam os "blocos" de texto na
+    imagem - e em tabelas largas (varias colunas) ele erra, tratando
+    cada coluna como um bloco separado. Isso faz o texto sair fora de
+    ordem: primeiro todos os numeros de atendimento, depois todas as
+    datas, depois todos os nomes - cada "coluna" numa sequencia
+    diferente, em vez de linha por linha como esta na foto.
     """
     imagem = Image.open(caminho_imagem)
-    texto_bruto = pytesseract.image_to_string(imagem, lang=idioma)
+    texto_bruto = pytesseract.image_to_string(
+        imagem, lang=idioma, config="--psm 6"
+    )
     return texto_bruto
 
 
@@ -80,10 +111,14 @@ def extrair_palavras_com_posicao(caminho_imagem, idioma="por"):
     Le a imagem e devolve, para cada palavra reconhecida, o texto e a
     posicao dela (coordenadas x, y na foto), alem de a qual linha ela
     pertence segundo o Tesseract.
+
+    Usa '--psm 6' pelo mesmo motivo explicado em
+    'extrair_texto_da_imagem': evita que o Tesseract separe as
+    colunas da tabela como blocos de leitura independentes.
     """
     imagem = Image.open(caminho_imagem)
     dados_brutos = pytesseract.image_to_data(
-        imagem, lang=idioma, output_type=Output.DICT
+        imagem, lang=idioma, config="--psm 6", output_type=Output.DICT
     )
     return dados_brutos
 
@@ -170,6 +205,13 @@ def extrair_coluna_da_foto(caminho_imagem, nome_da_coluna="Paciente"):
 
     Se o cabecalho nao for encontrado, devolve uma lista vazia -
     melhor avisar o usuario do que adivinhar a coluna errada.
+
+    Atencao: essa extracao depende da posicao (x, y) de cada palavra
+    continuar alinhada da primeira a ultima linha da foto. Fotos com
+    perspectiva/inclinacao (comum em fotos tiradas a mao) podem fazer
+    a coluna "escorregar" - nesse caso, prefira
+    'extrair_nomes_da_foto_por_padrao' (ver mais abaixo), que nao
+    depende de posicao.
     """
     dados_brutos = extrair_palavras_com_posicao(caminho_imagem)
     linhas = agrupar_palavras_em_linhas(dados_brutos)
@@ -199,3 +241,103 @@ def extrair_coluna_da_foto(caminho_imagem, nome_da_coluna="Paciente"):
             valores_da_coluna.append(" ".join(palavras_dentro_da_coluna))
 
     return valores_da_coluna
+
+
+# --- Extracao por PADRAO DE TEXTO (mais robusta a fotos tiradas a mao) ---
+#
+# A extracao por posicao (x, y) acima funciona bem quando a foto esta
+# bem alinhada/reta. Mas fotos tiradas a mao quase sempre tem uma
+# pequena inclinacao ou perspectiva, o que faz a posicao das colunas
+# "escorregar" aos poucos conforme desce na lista - e ai a coluna
+# calculada la em cima (no cabecalho) nao bate mais la embaixo.
+#
+# Para listas onde cada linha comeca com um padrao reconhecivel (ex:
+# numero de atendimento + data + hora, como em listas de agenda/
+# atendimento), e mais confiavel usar o TEXTO CORRIDO de cada linha e
+# reconhecer onde o nome comeca e termina pelo formato das palavras -
+# nomes proprios comecam com maiuscula ("Daniel", "Façanha"), e a
+# proxima coluna geralmente vem em MAIUSCULAS ("IPM", "LIV SAÚDE") ou
+# e um numero/hora - o que sinaliza o fim do nome.
+
+PADRAO_INICIO_DE_REGISTRO = re.compile(
+    r"^\s*\d{4,9}\s+\d{2}/\d{2}/\d{2,4}\s+\d{1,2}:\d{2}(:\d{2})?\s+(?P<resto>.+)$"
+)
+
+CONECTORES_COMUNS_EM_NOMES = {"de", "da", "do", "dos", "das", "e"}
+
+
+def _parece_palavra_de_nome(palavra):
+    """
+    Uma 'palavra de nome' comeca com maiuscula seguida de minusculas
+    (ex: "Daniel", "Façanha"), ou e um conector comum em nomes
+    portugueses (ex: "de", "da", "dos"). Uma palavra toda em
+    MAIUSCULAS (ex: "IPM", "LIV") ou um numero marca o fim do nome.
+    """
+    if palavra.lower() in CONECTORES_COMUNS_EM_NOMES:
+        return True
+    return bool(re.match(r"^[A-ZÀ-Ý][a-zà-ÿ]+$", palavra))
+
+
+def _extrair_nome_do_inicio_do_texto(texto):
+    """
+    Recebe o restante da linha (depois do numero/data/hora) e devolve
+    so as palavras que parecem nome, parando na primeira palavra que
+    nao parece (normalmente o inicio da proxima coluna, tipo o
+    convenio).
+    """
+    palavras_do_nome = []
+    for palavra in texto.split():
+        if _parece_palavra_de_nome(palavra):
+            palavras_do_nome.append(palavra)
+        else:
+            break
+    return " ".join(palavras_do_nome)
+
+
+def extrair_nomes_da_foto_por_padrao(caminho_imagem):
+    """
+    Extrai nomes de listas onde cada linha comeca com um numero de
+    atendimento, seguido de data e hora (formato comum em listas de
+    agenda/atendimento medico). Funciona direto em cima do texto
+    corrido do OCR (nao usa posicao x/y), o que a torna bem mais
+    tolerante a fotos tiradas com um pequeno angulo do que a extracao
+    por posicao.
+    """
+    texto_bruto = extrair_texto_da_imagem(caminho_imagem)
+    nomes_encontrados = []
+
+    for linha in texto_bruto.split("\n"):
+        correspondencia = PADRAO_INICIO_DE_REGISTRO.match(linha)
+        if not correspondencia:
+            continue  # essa linha nao comeca com numero+data+hora
+
+        nome = _extrair_nome_do_inicio_do_texto(correspondencia.group("resto"))
+        if len(nome) >= 2:
+            nomes_encontrados.append(nome)
+
+    return nomes_encontrados
+
+
+def extrair_nomes_da_lista_impressa(caminho_imagem, nome_da_coluna="Paciente"):
+    """
+    Funcao recomendada para o app usar. Tenta, em ordem de
+    confiabilidade:
+
+    1) padrao de linha "numero + data + hora + nome" - o mais robusto
+       a fotos tiradas a mao, ideal para listas de agenda/atendimento
+    2) extracao por posicao (x, y) do cabecalho - funciona bem quando
+       a foto esta bem alinhada e a lista nao segue o padrao acima
+    3) leitura do texto inteiro, linha a linha - ultimo recurso, para
+       nunca devolver uma lista vazia sem tentar de verdade
+
+    Remove nomes repetidos mantendo a ordem em que apareceram.
+    """
+    nomes = extrair_nomes_da_foto_por_padrao(caminho_imagem)
+
+    if not nomes:
+        nomes = extrair_coluna_da_foto(caminho_imagem, nome_da_coluna)
+
+    if not nomes:
+        nomes = extrair_nomes_da_foto(caminho_imagem)
+
+    return list(dict.fromkeys(nomes))

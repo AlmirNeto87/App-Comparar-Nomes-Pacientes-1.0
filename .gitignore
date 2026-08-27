@@ -44,6 +44,6 @@ mobile_app/bin/
 Thumbs.db
 
 # --- Arquivos de Imagem Teste ---
-.jpeg
-.png
-.jpg
+*.jpeg
+*.png
+*.jpg

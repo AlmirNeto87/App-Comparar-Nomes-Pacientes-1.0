@@ -25,6 +25,11 @@ from services import local_database
 from services import name_matcher
 from services import sync_service
 
+# Nome da coluna que queremos comparar quando a lista impressa tem
+# mais de uma coluna (ex: "Leito | Paciente | Idade"). Troque aqui se
+# um dia precisar comparar outra coluna, tipo "Responsavel".
+NOME_DA_COLUNA_ALVO = "Paciente"
+
 
 class TelaPrincipal(BoxLayout):
     """
@@ -91,11 +96,20 @@ class TelaPrincipal(BoxLayout):
         Clock.schedule_once(lambda dt: self.processar_foto(caminho_da_foto), 0.1)
 
     def processar_foto(self, caminho_da_foto):
-        """Extrai os nomes da foto e compara com o indice local."""
-        nomes_da_foto = ocr_service.extrair_nomes_da_foto(caminho_da_foto)
+        """
+        Extrai a coluna 'Paciente' da foto, tentando primeiro pelo
+        padrao de linha (mais robusto a fotos tiradas a mao) e depois
+        por posicao, se necessario.
+        """
+        nomes_da_foto = ocr_service.extrair_nomes_da_lista_impressa(
+            caminho_da_foto, nome_da_coluna=NOME_DA_COLUNA_ALVO
+        )
 
         if not nomes_da_foto:
-            self.atualizar_status("Nenhum nome foi reconhecido na foto.")
+            self.atualizar_status(
+                f"Nao encontrei a coluna '{NOME_DA_COLUNA_ALVO}' na foto. "
+                "Tente tirar a foto mais reta e com boa iluminacao."
+            )
             return
 
         nomes_indexados = local_database.buscar_todos_os_nomes_indexados()
